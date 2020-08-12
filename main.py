@@ -16,7 +16,7 @@ from constants import *
 
 # setup
 _, ax = plt.subplots(1, 1)
-init_state = INIT_STATE
+init_state = mvn(INIT_STATE, INIT_STATE_COV)
 init_state[L] = np.max([init_state[L], AX_MIN])
 init_state[W] = np.max([init_state[W], AX_MIN])
 
