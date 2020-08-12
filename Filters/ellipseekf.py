@@ -226,6 +226,10 @@ class EllipseEKF(ExtendedObjectFilter):
                                  -(meas[i, self._x1] - self._state[self._x1])]) \
                        / ((meas[i, self._x1] - self._state[self._x1]) ** 2
                           + (meas[i, self._x2] - self._state[self._x2]) ** 2)
+
+            if self._meas_asso:
+                alpha_xc = np.zeros(2)
+
             # r derived by alpha (-r_u is derived by psi)
             r_u = (self._state[self._l] * self._state[self._w] ** 3 - self._state[self._w] * self._state[self._l] ** 3) \
                   * 0.5 * np.sin(2 * (ang - self._state[self._al])) \
