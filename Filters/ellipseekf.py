@@ -43,6 +43,7 @@ class EllipseEKF(ExtendedObjectFilter):
         self._mode = kwargs.get('mode')
         self._pred_mode = kwargs.get('pred_mode')
         self._al_approx = kwargs.get('al_approx')  # approximate shape orientation via velocity vector
+        self._meas_asso = kwargs.get('meas_asso')
 
         self._x1 = 0
         self._x2 = 1
@@ -150,16 +151,17 @@ class EllipseEKF(ExtendedObjectFilter):
         self._cov += self._cov.T
         self._cov *= 0.5
 
-    def meas_equation(self, y, s, m=None):
+    def meas_equation(self, y, s, greedy_center=None):
         """
         Measurement equation for ellipse RHM.
         :param y:   Current measurement
         :param s:   Scaling factor for surface distribution
+        :param greedy_center:   If set, will use m as center for greedy angle association
         :return:    The global assumed measurement source, the measurement angle to the center, and the result of the
                     radial function
         """
         # vector from target center to measurement
-        center = m if m is not None else self._state[[self._x1, self._x2]]
+        center = greedy_center if greedy_center is not None else self._state[[self._x1, self._x2]]
         yhat_vec = y - center
 
         # angle of expected measurement source (greedy)
@@ -184,8 +186,6 @@ class EllipseEKF(ExtendedObjectFilter):
             self.correct_normal_ekf(meas, meas_cov)
         elif self._mode == 'imp':
             self.correct_imp_ekf(meas, meas_cov)
-        elif self._mode == "fixed":
-            self.correct_normal_fixed(meas, meas_cov)
         else:
             print('Invalid mode')
 
@@ -209,88 +209,13 @@ class EllipseEKF(ExtendedObjectFilter):
         nz = len(meas)  # number of measurements
 
         # go through measurements
-        for i in range(0, nz):
-            if self._al_approx & (not (self._pred_mode == 'coupled')):
-                self._state[self._al] = np.arctan2(self._state[self._v2], self._state[self._v1])
-
-            yhat, ang, l = self.meas_equation(meas[i], MU_S)
-            innov = meas[i] - yhat  # innovation
-
-            # calculate Jacobian========================================================================================
-            jac = np.zeros((2, len(self._state)))
-
-            # dh/dxc
-            alpha_xc = np.array([meas[i, self._x2] - self._state[self._x2],
-                                 -(meas[i, self._x1] - self._state[self._x1])]) \
-                       / ((meas[i, self._x1] - self._state[self._x1]) ** 2
-                          + (meas[i, self._x2] - self._state[self._x2]) ** 2)
-            # r derived by alpha (-r_u is derived by psi)
-            r_u = (self._state[self._l] * self._state[self._w] ** 3 - self._state[self._w] * self._state[self._l] ** 3) \
-                  * 0.5 * np.sin(2 * (ang - self._state[self._al])) \
-                  / np.sqrt(((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2)
-                            + ((self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2)) ** 3
-            r_xc = r_u * alpha_xc
-            jac[:, [self._x1, self._x2]] = np.identity(2) + MU_S \
-                                           * (np.einsum('a, b -> ab', np.array([np.cos(ang), np.sin(ang)]), r_xc)
-                                              + (l * np.einsum('a, b -> ab', np.array([-np.sin(ang), np.cos(ang)]),
-                                                               alpha_xc)))
-
-            # dh/dpsi
-            if not (self._al_approx & (not (self._pred_mode == 'coupled'))):
-                jac[:, self._al] = -r_u * MU_S * np.array([np.cos(ang), np.sin(ang)])
-
-            # dh/da and # dh/db
-            r_a_part = self._state[self._w] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
-                                                      + (self._state[self._l] * np.sin(
-                ang - self._state[self._al])) ** 2)
-            r_b_part = self._state[self._l] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
-                                                      + (self._state[self._l] * np.sin(
-                ang - self._state[self._al])) ** 2)
-            jac[:, self._l] = MU_S * np.array([np.cos(ang), np.sin(ang)]) \
-                              * (r_a_part - (self._state[self._l] ** 2 * self._state[self._w]
-                                             * np.sin(ang - self._state[self._al]) ** 2)
-                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
-                                            + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 3))
-            jac[:, self._w] = MU_S * np.array([np.cos(ang), np.sin(ang)]) \
-                              * (r_b_part - (self._state[self._w] ** 2 * self._state[self._l]
-                                             * np.cos(ang - self._state[self._al]) ** 2)
-                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
-                                            + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 3))
-
-            # Kalman update=============================================================================================
-            yhat_local = yhat - self._state[[self._x1, self._x2]]
-            innov_cov = np.einsum('ab, bc, dc -> ad', jac, self._cov, jac) + meas_cov \
-                        + SIGMA_S * np.einsum('a, b -> ab', yhat_local, yhat_local)
-            gain = np.einsum('ab, cb, cd -> ad', self._cov, jac, np.linalg.inv(innov_cov))
-
-            self._state = self._state + np.einsum('ab, b -> a', gain, innov)
-            self._cov = self._cov - np.einsum('ab, bc, dc -> ad', gain, innov_cov, gain)
-            # if self._pred_mode != 'coupled':
-            #     self._cov += np.identity(len(self._cov))*COV_ADD_EKF
-
-            self._cov = (self._cov + self._cov.T) * 0.5  # avoid numerical problems
-
-            self._state[self._al] = (self._state[self._al] + np.pi) % (2 * np.pi) - np.pi
-            # lower threshold for shape parameters
-            self._state[self._l] = np.max([AX_MIN, self._state[self._l]])
-            self._state[self._w] = np.max([AX_MIN, self._state[self._w]])
-
-    def correct_normal_fixed(self, meas, meas_cov):
-        """
-        Correction using fixed explicit measurement model.
-        :param meas:        The batch of measurements, processed sequentially
-        :param meas_cov:    Measurement covariance
-        :return:
-        """
-        nz = len(meas)  # number of measurements
-
         meas_mean = np.mean(meas, axis=0)
-        # go through measurements
         for i in range(0, nz):
             if self._al_approx & (not (self._pred_mode == 'coupled')):
                 self._state[self._al] = np.arctan2(self._state[self._v2], self._state[self._v1])
 
-            yhat, ang, l = self.meas_equation(meas[i], MU_S, m= meas_mean)
+            greedy_center = meas_mean if self._meas_asso else None
+            yhat, ang, l = self.meas_equation(meas[i], MU_S, greedy_center=greedy_center)
             innov = meas[i] - yhat  # innovation
 
             # calculate Jacobian========================================================================================
@@ -301,7 +226,6 @@ class EllipseEKF(ExtendedObjectFilter):
                                  -(meas[i, self._x1] - self._state[self._x1])]) \
                        / ((meas[i, self._x1] - self._state[self._x1]) ** 2
                           + (meas[i, self._x2] - self._state[self._x2]) ** 2)
-            alpha_xc = np.zeros(2)
             # r derived by alpha (-r_u is derived by psi)
             r_u = (self._state[self._l] * self._state[self._w] ** 3 - self._state[self._w] * self._state[self._l] ** 3) \
                   * 0.5 * np.sin(2 * (ang - self._state[self._al])) \
