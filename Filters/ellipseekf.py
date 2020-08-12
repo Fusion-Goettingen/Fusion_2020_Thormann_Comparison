@@ -102,8 +102,8 @@ class EllipseEKF(ExtendedObjectFilter):
         proc_cov = get_proc_cov(self._sigma_q, self._sigma_sh, td)
 
         proc_mat = np.array([
-            [1.0, 0.0, td,  0.0],
-            [0.0, 1.0, 0.0,  td],
+            [1.0, 0.0, td, 0.0],
+            [0.0, 1.0, 0.0, td],
             [0.0, 0.0, 1.0, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ])
@@ -125,22 +125,24 @@ class EllipseEKF(ExtendedObjectFilter):
         error_mat = np.array([(td ** 2 / 2) * np.cos(self._state[alpha]), (td ** 2 / 2)
                               * np.sin(self._state[alpha]), td, 0, 0, 0])
         proc_cov = np.outer(error_mat, error_mat) * (self._sigma_q ** 2)
-        proc_cov[3:, 3:] = np.diag(self._sigma_sh)
-        proc_cov[:2, :2] += np.outer(np.array([(td ** 2 / 2) * np.cos(self._state[alpha]+0.5*np.pi), (td ** 2 / 2)
-                              * np.sin(self._state[alpha]+0.5*np.pi)]),
-                                     np.array([(td ** 2 / 2) * np.cos(self._state[alpha]+0.5*np.pi), (td ** 2 / 2)
-                              * np.sin(self._state[alpha]+0.5*np.pi)]))
+        proc_cov[3:, 3:] = np.diag(self._sigma_sh) ** 2 * td **2
+        proc_cov[:2, :2] += np.outer(np.array([(td ** 2 / 2) * np.cos(self._state[alpha] + 0.5 * np.pi), (td ** 2 / 2)
+                                               * np.sin(self._state[alpha] + 0.5 * np.pi)]),
+                                     np.array([(td ** 2 / 2) * np.cos(self._state[alpha] + 0.5 * np.pi), (td ** 2 / 2)
+                                               * np.sin(self._state[alpha] + 0.5 * np.pi)]))
 
         self._state[[self._x1, self._x2]] = self._state[[self._x1, self._x2]] + self._state[self._v] * td \
                                             * np.array([np.cos(self._state[alpha]), np.sin(self._state[alpha])])
 
         jac_proc = np.array([
-            [1.0, 0.0, np.cos(self._state[alpha])*td, -np.sin(self._state[alpha])*self._state[self._v]*td, 0.0, 0.0],
-            [0.0, 1.0, np.sin(self._state[alpha])*td, np.cos(self._state[alpha])*self._state[self._v]*td,  0.0, 0.0],
-            [0.0, 0.0, 1.0,                           0.0,                                                 0.0, 0.0],
-            [0.0, 0.0, 0.0,                           1.0,                                                 0.0, 0.0],
-            [0.0, 0.0, 0.0,                           0.0,                                                 1.0, 0.0],
-            [0.0, 0.0, 0.0,                           0.0,                                                 0.0, 1.0],
+            [1.0, 0.0, np.cos(self._state[alpha]) * td, -np.sin(self._state[alpha]) * self._state[self._v] * td, 0.0,
+             0.0],
+            [0.0, 1.0, np.sin(self._state[alpha]) * td, np.cos(self._state[alpha]) * self._state[self._v] * td, 0.0,
+             0.0],
+            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
         ])
         self._cov = np.dot(np.dot(jac_proc, self._cov), jac_proc.T)
         self._cov += proc_cov
@@ -148,7 +150,7 @@ class EllipseEKF(ExtendedObjectFilter):
         self._cov += self._cov.T
         self._cov *= 0.5
 
-    def meas_equation(self, y, s):
+    def meas_equation(self, y, s, m=None):
         """
         Measurement equation for ellipse RHM.
         :param y:   Current measurement
@@ -157,7 +159,8 @@ class EllipseEKF(ExtendedObjectFilter):
                     radial function
         """
         # vector from target center to measurement
-        yhat_vec = y - self._state[[self._x1, self._x2]]
+        center = m if m is not None else self._state[[self._x1, self._x2]]
+        yhat_vec = y - center
 
         # angle of expected measurement source (greedy)
         ang = (np.arctan2(yhat_vec[self._x2], yhat_vec[self._x1]) + np.pi) % (2 * np.pi) - np.pi
@@ -181,6 +184,8 @@ class EllipseEKF(ExtendedObjectFilter):
             self.correct_normal_ekf(meas, meas_cov)
         elif self._mode == 'imp':
             self.correct_imp_ekf(meas, meas_cov)
+        elif self._mode == "fixed":
+            self.correct_normal_fixed(meas, meas_cov)
         else:
             print('Invalid mode')
 
@@ -217,13 +222,13 @@ class EllipseEKF(ExtendedObjectFilter):
             # dh/dxc
             alpha_xc = np.array([meas[i, self._x2] - self._state[self._x2],
                                  -(meas[i, self._x1] - self._state[self._x1])]) \
-                       / ((meas[i, self._x1] - self._state[self._x1])**2
-                          + (meas[i, self._x2] - self._state[self._x2])**2)
+                       / ((meas[i, self._x1] - self._state[self._x1]) ** 2
+                          + (meas[i, self._x2] - self._state[self._x2]) ** 2)
             # r derived by alpha (-r_u is derived by psi)
-            r_u = (self._state[self._l] * self._state[self._w]**3 - self._state[self._w] * self._state[self._l]**3) \
+            r_u = (self._state[self._l] * self._state[self._w] ** 3 - self._state[self._w] * self._state[self._l] ** 3) \
                   * 0.5 * np.sin(2 * (ang - self._state[self._al])) \
-                  / np.sqrt(((self._state[self._w] * np.cos(ang - self._state[self._al]))**2)
-                            + ((self._state[self._l] * np.sin(ang - self._state[self._al]))**2))**3
+                  / np.sqrt(((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2)
+                            + ((self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2)) ** 3
             r_xc = r_u * alpha_xc
             jac[:, [self._x1, self._x2]] = np.identity(2) + MU_S \
                                            * (np.einsum('a, b -> ab', np.array([np.cos(ang), np.sin(ang)]), r_xc)
@@ -235,20 +240,22 @@ class EllipseEKF(ExtendedObjectFilter):
                 jac[:, self._al] = -r_u * MU_S * np.array([np.cos(ang), np.sin(ang)])
 
             # dh/da and # dh/db
-            r_a_part = self._state[self._w] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                                      + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)
-            r_b_part = self._state[self._l] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                                      + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)
+            r_a_part = self._state[self._w] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                                      + (self._state[self._l] * np.sin(
+                ang - self._state[self._al])) ** 2)
+            r_b_part = self._state[self._l] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                                      + (self._state[self._l] * np.sin(
+                ang - self._state[self._al])) ** 2)
             jac[:, self._l] = MU_S * np.array([np.cos(ang), np.sin(ang)]) \
-                              * (r_a_part - (self._state[self._l]**2 * self._state[self._w]
-                                             * np.sin(ang - self._state[self._al])**2)
-                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                            + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)**3))
+                              * (r_a_part - (self._state[self._l] ** 2 * self._state[self._w]
+                                             * np.sin(ang - self._state[self._al]) ** 2)
+                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                            + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 3))
             jac[:, self._w] = MU_S * np.array([np.cos(ang), np.sin(ang)]) \
-                              * (r_b_part - (self._state[self._w]**2 * self._state[self._l]
-                                             * np.cos(ang - self._state[self._al])**2)
-                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                            + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)**3))
+                              * (r_b_part - (self._state[self._w] ** 2 * self._state[self._l]
+                                             * np.cos(ang - self._state[self._al]) ** 2)
+                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                            + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 3))
 
             # Kalman update=============================================================================================
             yhat_local = yhat - self._state[[self._x1, self._x2]]
@@ -263,7 +270,85 @@ class EllipseEKF(ExtendedObjectFilter):
 
             self._cov = (self._cov + self._cov.T) * 0.5  # avoid numerical problems
 
-            self._state[self._al] = (self._state[self._al] + np.pi) % (2*np.pi) - np.pi
+            self._state[self._al] = (self._state[self._al] + np.pi) % (2 * np.pi) - np.pi
+            # lower threshold for shape parameters
+            self._state[self._l] = np.max([AX_MIN, self._state[self._l]])
+            self._state[self._w] = np.max([AX_MIN, self._state[self._w]])
+
+    def correct_normal_fixed(self, meas, meas_cov):
+        """
+        Correction using fixed explicit measurement model.
+        :param meas:        The batch of measurements, processed sequentially
+        :param meas_cov:    Measurement covariance
+        :return:
+        """
+        nz = len(meas)  # number of measurements
+
+        meas_mean = np.mean(meas, axis=0)
+        # go through measurements
+        for i in range(0, nz):
+            if self._al_approx & (not (self._pred_mode == 'coupled')):
+                self._state[self._al] = np.arctan2(self._state[self._v2], self._state[self._v1])
+
+            yhat, ang, l = self.meas_equation(meas[i], MU_S, m= meas_mean)
+            innov = meas[i] - yhat  # innovation
+
+            # calculate Jacobian========================================================================================
+            jac = np.zeros((2, len(self._state)))
+
+            # dh/dxc
+            alpha_xc = np.array([meas[i, self._x2] - self._state[self._x2],
+                                 -(meas[i, self._x1] - self._state[self._x1])]) \
+                       / ((meas[i, self._x1] - self._state[self._x1]) ** 2
+                          + (meas[i, self._x2] - self._state[self._x2]) ** 2)
+            alpha_xc = np.zeros(2)
+            # r derived by alpha (-r_u is derived by psi)
+            r_u = (self._state[self._l] * self._state[self._w] ** 3 - self._state[self._w] * self._state[self._l] ** 3) \
+                  * 0.5 * np.sin(2 * (ang - self._state[self._al])) \
+                  / np.sqrt(((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2)
+                            + ((self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2)) ** 3
+            r_xc = r_u * alpha_xc
+            jac[:, [self._x1, self._x2]] = np.identity(2) + MU_S \
+                                           * (np.einsum('a, b -> ab', np.array([np.cos(ang), np.sin(ang)]), r_xc)
+                                              + (l * np.einsum('a, b -> ab', np.array([-np.sin(ang), np.cos(ang)]),
+                                                               alpha_xc)))
+
+            # dh/dpsi
+            if not (self._al_approx & (not (self._pred_mode == 'coupled'))):
+                jac[:, self._al] = -r_u * MU_S * np.array([np.cos(ang), np.sin(ang)])
+
+            # dh/da and # dh/db
+            r_a_part = self._state[self._w] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                                      + (self._state[self._l] * np.sin(
+                ang - self._state[self._al])) ** 2)
+            r_b_part = self._state[self._l] / np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                                      + (self._state[self._l] * np.sin(
+                ang - self._state[self._al])) ** 2)
+            jac[:, self._l] = MU_S * np.array([np.cos(ang), np.sin(ang)]) \
+                              * (r_a_part - (self._state[self._l] ** 2 * self._state[self._w]
+                                             * np.sin(ang - self._state[self._al]) ** 2)
+                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                            + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 3))
+            jac[:, self._w] = MU_S * np.array([np.cos(ang), np.sin(ang)]) \
+                              * (r_b_part - (self._state[self._w] ** 2 * self._state[self._l]
+                                             * np.cos(ang - self._state[self._al]) ** 2)
+                                 / (np.sqrt((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                                            + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 3))
+
+            # Kalman update=============================================================================================
+            yhat_local = yhat - self._state[[self._x1, self._x2]]
+            innov_cov = np.einsum('ab, bc, dc -> ad', jac, self._cov, jac) + meas_cov \
+                        + SIGMA_S * np.einsum('a, b -> ab', yhat_local, yhat_local)
+            gain = np.einsum('ab, cb, cd -> ad', self._cov, jac, np.linalg.inv(innov_cov))
+
+            self._state = self._state + np.einsum('ab, b -> a', gain, innov)
+            self._cov = self._cov - np.einsum('ab, bc, dc -> ad', gain, innov_cov, gain)
+            # if self._pred_mode != 'coupled':
+            #     self._cov += np.identity(len(self._cov))*COV_ADD_EKF
+
+            self._cov = (self._cov + self._cov.T) * 0.5  # avoid numerical problems
+
+            self._state[self._al] = (self._state[self._al] + np.pi) % (2 * np.pi) - np.pi
             # lower threshold for shape parameters
             self._state[self._l] = np.max([AX_MIN, self._state[self._l]])
             self._state[self._w] = np.max([AX_MIN, self._state[self._w]])
@@ -285,35 +370,40 @@ class EllipseEKF(ExtendedObjectFilter):
             yhat, ang, l = self.meas_equation(meas[i], MU_S)
 
             # calculate Jacobians=======================================================================================
-            mu_h = MU_S2 * l**2 - np.linalg.norm(meas[i] - self._state[[self._x1, self._x2]])**2 + np.trace(meas_cov)
+            mu_h = MU_S2 * l ** 2 - np.linalg.norm(meas[i] - self._state[[self._x1, self._x2]]) ** 2 + np.trace(
+                meas_cov)
 
             jac_1 = np.zeros(len(self._state))
-            dh_dalph = MU_S2 * (self._state[self._l]**2 * self._state[self._w]**4
-                                - self._state[self._l]**4 * self._state[self._w]**2) \
+            dh_dalph = MU_S2 * (self._state[self._l] ** 2 * self._state[self._w] ** 4
+                                - self._state[self._l] ** 4 * self._state[self._w] ** 2) \
                        * np.sin(2 * (ang - self._state[self._al])) \
-                       / ((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                          + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)**2
+                       / ((self._state[self._w] * np.cos(ang - self._state[self._al])) ** 2
+                          + (self._state[self._l] * np.sin(ang - self._state[self._al])) ** 2) ** 2
             dalph_dxc = np.array([meas[i, self._x2] - self._state[self._x2],
                                   -(meas[i, self._x1] - self._state[self._x1])]) \
-                        / ((meas[i, self._x1] - self._state[self._x1])**2
-                           + (meas[i, self._x2] - self._state[self._x2])**2)
+                        / ((meas[i, self._x1] - self._state[self._x1]) ** 2
+                           + (meas[i, self._x2] - self._state[self._x2]) ** 2)
             jac_1[[self._x1, self._x2]] = dh_dalph * dalph_dxc
             if not self._al_approx & (not (self._pred_mode == 'coupled')):
                 jac_1[self._al] = -dh_dalph
-            jac_1[self._l] = MU_S2 * (2 * self._state[self._l] * self._state[self._w]**2
-                                      / ((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                         + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)
-                                      - 2 * self._state[self._l]**3 * self._state[self._w]**2
-                                      * np.sin(ang - self._state[self._al])**2
-                                      / ((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                         + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)**2)
-            jac_1[self._w] = MU_S2 * (2 * self._state[self._w] * self._state[self._l]**2
-                                / ((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                   + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)
-                                - 2 * self._state[self._w]**3 * self._state[self._l]**2
-                                * np.cos(ang - self._state[self._al])**2
-                                / ((self._state[self._w] * np.cos(ang - self._state[self._al]))**2
-                                   + (self._state[self._l] * np.sin(ang - self._state[self._al]))**2)**2)
+
+            a = self._state[self._l]
+            b = self._state[self._w]
+            psi = self._state[self._al]
+            jac_1[self._l] = MU_S2 * (2 * a * b ** 2
+                                      / ((b * np.cos(ang - psi)) ** 2
+                                         + (a * np.sin(ang - psi)) ** 2)
+                                      - 2 * a ** 3 * b ** 2
+                                      * np.sin(ang - psi) ** 2
+                                      / ((b * np.cos(ang - psi)) ** 2
+                                         + (a * np.sin(ang - psi)) ** 2) ** 2)
+            jac_1[self._w] = MU_S2 * (2 * b * a ** 2
+                                      / ((b * np.cos(ang - psi)) ** 2
+                                         + (a * np.sin(ang - psi)) ** 2)
+                                      - 2 * b ** 3 * a ** 2
+                                      * np.cos(ang - psi) ** 2
+                                      / ((b * np.cos(ang - psi)) ** 2
+                                         + (a * np.sin(ang - psi)) ** 2) ** 2)
 
             jac_2 = np.array([-2.0 * (meas[i, self._x1] - self._state[self._x1]),
                               -2.0 * (meas[i, self._x2] - self._state[self._x2]),
@@ -321,8 +411,8 @@ class EllipseEKF(ExtendedObjectFilter):
 
             t = 2.0 * (yhat - self._state[[self._x1, self._x2]])
             r_h3 = np.trace(np.dot(t, t) * meas_cov) + 2.0 * np.trace(np.dot(meas_cov, meas_cov)) \
-                   + np.trace(meas_cov)**2
-            r_h4 = SIGMA_S2 * l**4
+                   + np.trace(meas_cov) ** 2
+            r_h4 = SIGMA_S2 * l ** 4
 
             r_h = r_h3 + r_h4
 
