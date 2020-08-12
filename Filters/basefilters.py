@@ -61,6 +61,7 @@ class ExtendedObjectFilter:
 
     def plot_gw_error(self, ax, runs):
         self._error_gw /= runs
+        print("%s: %.4f" %(self._name, float(np.mean(self._error_gw))))
         ax.plot(np.arange(TIME_STEPS), self._error_gw, color=self._color, label=self._name)
 
     def plot_vel_error(self, ax, runs):

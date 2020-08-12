@@ -13,11 +13,12 @@ def get_configs(init_state, ax):
     config_ellipseekf_normal = {
         'name': 'Ellipse-RHM-EKF',
         'color': 'red',
-        'sigma_q': np.array([5.0, 5.0]),
-        'sigma_sh': np.array([0.01, 0.001, 0.001]),
+        'sigma_q': np.array([1.0, 1.0]),
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),
         'pred_mode': 'normal',  # normal for Cartesian and coupled for polar velocity with single orientation variable
         'mode': 'normal',  # normal or implicit measurement model
         'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead
+        'meas_asso': False  # true if greedy association should be done relative to measurement mean
     }
     config_ellipseekf_normal.update(config_base)
 
@@ -25,18 +26,56 @@ def get_configs(init_state, ax):
         'name': 'Ellipse-RHM-EKF-c',
         'color': 'brown',
         'sigma_q': np.array([1.0, 1.0]),
-        'sigma_sh': np.array([0.01, 0.001, 0.001]),
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),
         'pred_mode': 'coupled',  # normal for Cartesian and coupled for polar velocity with single orientation variable
         'mode': 'normal',  # normal or implicit measurement model
         'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead
+        'meas_asso': False  # true if greedy association should be done relative to measurement mean
     }
     config_ellipseekf_normal_coupled.update(config_base)
+
+    config_ellipseekf_fixed = {
+        'name': 'Ellipse-RHM-EKF-fixed',
+        'color': 'black',
+        'sigma_q': np.array([1.0, 1.0]),
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),
+        'pred_mode': 'normal',  # normal for Cartesian and coupled for polar velocity with single orientation variable
+        'mode': 'normal',  # normal or implicit measurement model
+        'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead
+        'meas_asso': True  # true if greedy association should be done relative to measurement mean
+
+    }
+    config_ellipseekf_fixed.update(config_base)
+
+    config_ellipseekf_fixed_c = {
+        'name': 'Ellipse-RHM-EKF-fixed_c',
+        'color': 'yellow',
+        'sigma_q': np.array([1.0, 1.0]),
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),
+        'pred_mode': 'coupled',  # normal for Cartesian and coupled for polar velocity with single orientation variable
+        'mode': 'normal',  # normal or implicit measurement model
+        'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead
+        'meas_asso': True  # true if greedy association should be done relative to measurement mean
+    }
+    config_ellipseekf_fixed_c.update(config_base)
+
+    config_ellipseekf_fixed_oa = {
+        'name': 'Ellipse-RHM-EKF-fixed_oa',
+        'color': 'grey',
+        'sigma_q': np.array([1.0, 1.0]),
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),
+        'pred_mode': 'normal',  # normal for Cartesian and coupled for polar velocity with single orientation variable
+        'mode': 'normal',  # normal or implicit measurement model
+        'al_approx': True,  # true for ignoring alpha in state and using orientation of velocity vector instead
+        'meas_asso': True  # true if greedy association should be done relative to measurement mean
+    }
+    config_ellipseekf_fixed_oa.update(config_base)
 
     config_ellipseekf_imp = {
         'name': 'Ellipse-RHM-EKF-imp',
         'color': 'lime',
         'sigma_q': np.array([1.0, 1.0]),
-        'sigma_sh': np.array([0.01, 0.001, 0.001]),  # in sharp turn, alpha 0.1 in low noise and 0.5 in high noise
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),  # in sharp turn, alpha 0.1 in low noise and 0.5 in high noise
         'pred_mode': 'normal',  # normal for Cartesian and coupled for polar velocity with single orientation variable
         'mode': 'imp',  # normal or implicit measurement model
         'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead
@@ -47,7 +86,7 @@ def get_configs(init_state, ax):
         'name': 'Ellipse-RHM-EKF-imp-oa',
         'color': 'yellowgreen',
         'sigma_q': np.array([1.0, 1.0]),
-        'sigma_sh': np.array([0.01, 0.001, 0.001]),
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),
         'pred_mode': 'normal',  # normal for Cartesian and coupled for polar velocity with single orientation variable
         'mode': 'imp',  # normal or implicit measurement model
         'al_approx': True,  # true for ignoring alpha in state and using orientation of velocity vector instead
@@ -58,7 +97,7 @@ def get_configs(init_state, ax):
         'name': 'Ellipse-RHM-EKF-imp-c',
         'color': 'darkgreen',
         'sigma_q': np.array([1.0, 1.0]),
-        'sigma_sh': np.array([0.01, 0.001, 0.001]),  # in sharp turn and high noise, alpha 0.05
+        'sigma_sh': np.sqrt(np.array([0.01, 0.001, 0.001])),  # in sharp turn and high noise, alpha 0.05
         'pred_mode': 'coupled',  # normal for Cartesian and coupled for polar velocity with single orientation variable
         'mode': 'imp',  # normal or implicit measurement model
         'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead
@@ -95,4 +134,4 @@ def get_configs(init_state, ax):
 
     return config_ellipseekf_normal, config_ellipseekf_imp, config_ellipseekf_normal_coupled,\
         config_ellipseekf_imp_coupled, config_ellipseekf_imp_oa, config_memekfstar, config_memekfstar_oa, \
-        config_halfaxis
+        config_halfaxis, config_ellipseekf_fixed, config_ellipseekf_fixed_c, config_ellipseekf_fixed_oa
