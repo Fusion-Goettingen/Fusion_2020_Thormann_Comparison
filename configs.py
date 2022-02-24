@@ -36,7 +36,7 @@ def get_configs(init_state, ax):
         'name': 'Ellipse-RHM-EKF-imp',
         'color': 'lime',
         'sigma_q': np.array([1.0, 1.0]),
-        'sigma_sh': np.array([0.01, 0.001, 0.001]),  # in sharp turn, alpha 0.1 in low noise and 0.5 in high noise
+        'sigma_sh': np.array([0.1, 0.001, 0.001]),  # in sharp turn, alpha 0.1 in low noise and 0.5 in high noise
         'pred_mode': 'normal',  # normal for Cartesian and coupled for polar velocity with single orientation variable
         'mode': 'imp',  # normal or implicit measurement model
         'al_approx': False,  # true for ignoring alpha in state and using orientation of velocity vector instead

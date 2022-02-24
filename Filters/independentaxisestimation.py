@@ -97,7 +97,7 @@ class IndependentAxisEstimation(ExtendedObjectFilter):
             [np.cos(alpha), -np.sin(alpha)],
             [np.sin(alpha),  np.cos(alpha)],
         ])
-        shape_mat = np.dot(np.dot(rot_mat, np.diag([self._l, self._w])), rot_mat.T)
+        shape_mat = np.dot(np.dot(rot_mat, np.diag([self._l, self._w])**2), rot_mat.T)
 
         z_hat = np.mean(meas, axis=0)
 
